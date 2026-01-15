@@ -1,0 +1,1 @@
+If i spam click the logo it glitches out can u make it smooth like spam clicking generates multiple waves and change the bg 
