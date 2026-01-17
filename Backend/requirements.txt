@@ -1,6 +1,0 @@
-fastapi
-uvicorn
-motor
-google-genai
-python-dotenv
-pydantic
