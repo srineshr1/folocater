@@ -2,6 +2,10 @@ import { useState, useRef, useEffect } from "react";
 import "./index.css";
 import ReactMarkdown from "react-markdown";
 
+// --- CONFIGURATION ---
+// Replace this with your actual Render/Railway URL
+const BACKEND_URL = "https://gemini-mongodb-backend.onrender.com";
+
 export default function App() {
   // --- STATE MANAGEMENT ---
   const [username, setUsername] = useState("");
@@ -25,10 +29,7 @@ export default function App() {
 
   // Background Image Cycling
   const backgrounds = [
-    '/backgrounds/bg1.png',
-    '/backgrounds/bg2.jpg',
-    '/backgrounds/bg3.jpg',
-    '/backgrounds/bg4.jpg'
+    '/backgrounds/bg1.png'
   ];
   const [currentBgIndex, setCurrentBgIndex] = useState(0);
   const [showWave, setShowWave] = useState(false);
@@ -36,24 +37,78 @@ export default function App() {
   const inputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
 
-  // --- LOGO TYPING ANIMATION ---
+  // --- SMOOTH STREAMING REFS ---
+  const outputBufferRef = useRef("");
+  const displayBufferRef = useRef("");
+  const isStreamActiveRef = useRef(false);
+
+  // --- LOGO TYPING ANIMATION (UNTOUCHED) ---
   useEffect(() => {
     const fullText = "folocater";
     let currentIndex = 0;
-
     const typeNextChar = () => {
       if (currentIndex < fullText.length) {
         setLogoText(fullText.substring(0, currentIndex + 1));
         currentIndex++;
-        setTimeout(typeNextChar, 80); // Fast typing: 80ms per character
+        setTimeout(typeNextChar, 80);
       } else {
-        // Hide cursor after typing is complete
         setTimeout(() => setShowLogoCursor(false), 500);
       }
     };
-
     typeNextChar();
   }, []);
+
+  // --- TYPEWRITER TICKER (NATURAL) ---
+  useEffect(() => {
+    let timeoutId;
+
+    const typeChar = () => {
+      if (isStreamActiveRef.current && displayBufferRef.current.length < outputBufferRef.current.length) {
+        const nextChar = outputBufferRef.current[displayBufferRef.current.length];
+        displayBufferRef.current += nextChar;
+
+        setLines(prev => {
+          const newList = [...prev];
+          newList[0] = displayBufferRef.current;
+          return newList;
+        });
+
+        // Calculate delay for natural feel
+        let delay = 10; // Base fast speed
+        if (nextChar === "." || nextChar === "!" || nextChar === "?") delay = 30; // Pause on sentences
+        else if (nextChar === ",") delay = 20; // Pause on commas
+        else if (Math.random() > 0.9) delay += 10; // Occasional slight stutter
+
+        timeoutId = setTimeout(typeChar, delay);
+      } else {
+        timeoutId = setTimeout(typeChar, 20); // Check again soon
+      }
+    };
+
+    typeChar();
+
+    return () => clearTimeout(timeoutId);
+  }, []);
+
+  // --- HELPER: LOAD HISTORY ---
+  const loadHistory = async (name) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/history/${name}`);
+      if (res.ok) {
+        const historyData = await res.json();
+        const historyLines = historyData.map(m =>
+          m.role === "user" ? `>>> ${m.text}` : m.text
+        ).reverse();
+        // If history exists, show it. Otherwise show welcome.
+        setLines(historyLines.length > 0 ? historyLines : [`Hello ${name}! 😊`]);
+      } else {
+        setLines([`Hello ${name}! (New Session)`]);
+      }
+    } catch (err) {
+      console.error("Failed to load history", err);
+      setLines([`Hello ${name}! (Offline Mode)`]);
+    }
+  };
 
   // --- INITIALIZATION ---
   useEffect(() => {
@@ -61,30 +116,24 @@ export default function App() {
     if (savedName) {
       setUsername(savedName);
       setShowPopup(false);
-      setLines([`Hello ${savedName}! 😊 How can I assist you today?`]);
+      loadHistory(savedName);
     }
   }, []);
 
-  // --- AUTO-FOCUS LOGIC ---
+  // --- AUTO-FOCUS LOGIC (UNTOUCHED) ---
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
-      // 1. Don't auto-focus if the login popup is open
       if (showPopup) return;
-
-      // 2. Don't interfere if the user is using shortcuts (Ctrl/Alt/Meta)
       if (e.ctrlKey || e.altKey || e.metaKey) return;
-
-      // 3. If input is not focused, focus it!
       if (document.activeElement !== inputRef.current) {
         inputRef.current.focus();
       }
     };
-
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, [showPopup]);
 
-  // --- CURSOR LOGIC ---
+  // --- CURSOR LOGIC (UNTOUCHED) ---
   const getTextWidth = (text, font) => {
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
@@ -98,7 +147,6 @@ export default function App() {
       const font = `${styles.fontSize} ${styles.fontFamily}`;
       const width = getTextWidth(input, font);
       setCursorOffset(width);
-
       setIsTyping(true);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 500);
@@ -106,37 +154,28 @@ export default function App() {
   }, [input]);
 
   // --- ACTIONS ---
-  const confirmUsername = () => {
+  const confirmUsername = async () => {
     if (tempName.trim()) {
-      setIsClosing(true);
-      setTimeout(() => {
-        localStorage.setItem("folocater_user", tempName);
-        setUsername(tempName);
-        setShowPopup(false);
-        setIsClosing(false);
-        setIsChangingIdentity(false);
-        setLines([`Hello ${tempName}! 😊 How can I assist you today?`]);
-      }, 500);
+      await loadHistory(tempName);
+
+      localStorage.setItem("folocater_user", tempName);
+      setUsername(tempName);
+      setShowPopup(false);
     }
   };
 
   const resetIdentity = () => {
     setIsChangingIdentity(true);
-    setTempName(username); // Pre-fill with current username
+    setTempName(username);
     setShowPopup(true);
     setLines(["Waiting for login..."]);
   };
 
   const handleLogoClick = () => {
-    // Trigger wave animation
     setShowWave(true);
-
-    // Change background after a short delay (when wave starts expanding)
     setTimeout(() => {
       setCurrentBgIndex((prev) => (prev + 1) % backgrounds.length);
     }, 300);
-
-    // Remove wave animation after it completes
     setTimeout(() => {
       setShowWave(false);
     }, 1000);
@@ -152,41 +191,58 @@ export default function App() {
     }, 500);
   };
 
+  // --- MODIFIED SEND MESSAGE ---
   async function sendMessage() {
     if (!input.trim()) return;
     const userText = input.trim();
     setInput("");
 
+    // Ghost text animation
     setGhost(`>>> ${userText}`);
     await new Promise((res) => setTimeout(res, 250));
     setGhost(null);
 
+    // Initial response line
     setLines((l) => ["Thinking", `>>> ${userText}`, ...l]);
 
+    // Reset buffers for typewriter effect
+    outputBufferRef.current = "";
+    displayBufferRef.current = "";
+    isStreamActiveRef.current = true;
+
     try {
-      const res = await fetch("http://127.0.0.1:8000/chat/stream", {
+      // Fetching from your hosted Python backend
+      const res = await fetch(`${BACKEND_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userText }),
+        body: JSON.stringify({
+          username: username, // Added username for DB tracking
+          message: userText
+        }),
       });
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+      if (!res.ok) throw new Error("Server error");
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value);
-        setLines((l) => [buffer, ...l.slice(1)]);
+      const data = await res.json();
+
+      // We set the buffer to the full text, and the typewriter ticker 
+      // (the useEffect above) will handle the smooth typing animation.
+      outputBufferRef.current = data.response;
+
+      // Wait for the typewriter to finish displaying everything
+      while (displayBufferRef.current.length < outputBufferRef.current.length) {
+        await new Promise(r => setTimeout(r, 100));
       }
-      setLines((l) => ["", ...l]);
+
+      isStreamActiveRef.current = false;
+      setLines((l) => ["", ...l]); // Add spacer
     } catch (e) {
-      setLines((l) => ["Error: Could not connect to local LLM.", ...l.slice(1)]);
+      isStreamActiveRef.current = false;
+      setLines((l) => ["Error: Could not connect to backend server.", ...l.slice(1)]);
     }
   }
 
-  // --- RENDER ---
+  // --- RENDER (UNTOUCHED) ---
   return (
     <div className="terminal" style={{ backgroundImage: `url(${backgrounds[currentBgIndex]})` }}>
       {showWave && <div className="wave-animation" />}
@@ -228,7 +284,7 @@ export default function App() {
               change identity
             </button>
           )}
-          <div className="credits">made by google</div>
+          <div className="credits">made by srinesh</div>
         </div>
       </header>
 

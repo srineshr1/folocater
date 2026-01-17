@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>StreamLine Pro | Debug Mode</title>
+    <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+    <style>
+        body { background: #0f172a; color: white; font-family: sans-serif; text-align: center; padding: 50px; }
+        
+        /* This makes the cast button visible even if it hasn't loaded yet */
+        google-cast-launcher {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            background: #1e293b;
+            border: 2px solid #334155; /* Blue-grey border */
+            border-radius: 8px;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+
+        .status-box {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            background: #1e293b;
+            font-size: 0.9rem;
+        }
+
+        .error { color: #f87171; border: 1px solid #f87171; }
+        .success { color: #4ade80; border: 1px solid #4ade80; }
+
+        button {
+            padding: 10px 20px;
+            background: #6366f1;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>StreamLine Cast</h1>
+    
+    <div id="status" class="status-box">Checking Cast SDK...</div>
+
+    <div style="margin-top: 40px;">
+        <p>1. Connect to TV:</p>
+        <google-cast-launcher id="castbutton"></google-cast-launcher>
+        
+        <p style="margin-top: 30px;">2. Pick & Stream:</p>
+        <input type="file" id="fileInput" accept=".mp4,.mkv">
+        <button onclick="launchMedia()">Cast File</button>
+    </div>
+
+    <script>
+        // 1. Detect if the SDK is actually loading
+        window['__onGCastApiAvailable'] = function(isAvailable) {
+            const statusDiv = document.getElementById('status');
+            if (isAvailable) {
+                statusDiv.innerHTML = "✅ Cast SDK Loaded. Use 'localhost:8000' to see the icon.";
+                statusDiv.className = "status-box success";
+                initializeCastApi();
+            } else {
+                statusDiv.innerHTML = "❌ Cast SDK failed. Are you using Chrome or Edge?";
+                statusDiv.className = "status-box error";
+            }
+        };
+
+        function initializeCastApi() {
+            cast.framework.CastContext.getInstance().setOptions({
+                receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+                autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
+            });
+        }
+
+        function launchMedia() {
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files[0]) { alert("Select a file first!"); return; }
+            
+            const file = fileInput.files[0];
+            const session = cast.framework.CastContext.getInstance().getCurrentSession();
+            
+            if (!session) {
+                alert("Click the Cast icon (box in step 1) to connect to your TV first!");
+                return;
+            }
+
+            // Correctly pointing to your Python server
+            const fileName = encodeURIComponent(file.name);
+            const mediaUrl = window.location.origin + "/" + fileName;
+            
+            const mimeType = file.name.endsWith('.mkv') ? 'video/x-matroska' : 'video/mp4';
+            const mediaInfo = new chrome.cast.media.MediaInfo(mediaUrl, mimeType);
+            const request = new chrome.cast.media.LoadRequest(mediaInfo);
+
+            session.loadMedia(request).then(
+                () => console.log('Load succeed'),
+                (e) => console.log('Error: ' + e)
+            );
+        }
+    </script>
+</body>
+</html>
